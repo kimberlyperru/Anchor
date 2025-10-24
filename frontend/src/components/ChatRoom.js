@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import API from '../utils/api';
 import io from 'socket.io-client';
 import { Card, Button, Form } from 'react-bootstrap';
+import avatarImages from '../utils/avatars';
 
 const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:4000');
 
@@ -40,11 +41,11 @@ export default function ChatRoom() {
   return (
     <Card className="p-3">
       <h4>Thread</h4>
-      <div style={{height: '60vh', overflowY: 'auto', border: '1px solid #eee', padding: 10, marginBottom: 10}}>
+      <div style={{height: '60vh', overflowY: 'auto', border: '1px solid #0F52BA', padding: 10, marginBottom: 10}}>
         {messages.map(m => (
-          <div key={m.id || m._id} style={{padding:8, borderBottom:'1px solid #f0f0f0'}}>
-            <div className="d-flex align-items-center">
-              <img src={`/avatars/${m.avatar}.gif`} style={{width:40,height:40,marginRight:10}} alt="a"/>
+          <div key={m.id || m._id} style={{padding:8, borderBottom:'1px solid #DAA520'}}>
+            <div className="d-flex align-items-center" >
+              <img src={avatarImages[m.avatar]} style={{width:40,height:40,marginRight:10}} alt="avatar"/>
               <div>
                 <div style={{fontSize:14}} dangerouslySetInnerHTML={{__html: escapeHtml(m.content)}} />
                 <small className="text-muted">{new Date(m.createdAt).toLocaleString()}</small>
@@ -69,7 +70,7 @@ export default function ChatRoom() {
 }
 
 function escapeHtml(unsafe) {
-  return (unsafe || '').replace(/[&<"']/g, function(m) {
-    return ({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'})[m];
-  }).replace(/\n/g, '<br/>');
+  return String(unsafe || '')
+    .replace(/[&<"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '"': '&quot;', "'": '&#039;' }[m]))
+    .replace(/\n/g, '<br/>');
 }

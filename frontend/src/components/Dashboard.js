@@ -37,6 +37,9 @@ export default function Dashboard() {
           <Col key={r._id}>
             <Card className="p-3">
               <h5>{r.title}</h5>
+              <div className="text-muted small">
+                {r.messageCount || 0} messages · Created {new Date(r.createdAt).toLocaleDateString()}
+              </div>
               <div className="d-flex justify-content-between mt-2">
                 <Link to={`/room/${r._id}`} className="btn btn-primary">Open</Link>
               </div>
