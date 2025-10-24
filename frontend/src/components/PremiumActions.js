@@ -4,7 +4,7 @@ import { Button } from 'react-bootstrap';
 
 export default function PremiumActions({ userId }) {
   async function payWithMpesa() {
-    const res = await API.post('/payments/mpesa/init', { amount: 300, email: 'demo@example.com', purpose: 'premium' });
+    const res = await API.post('/payments/mpesa/init', { amount: 300, email: 'user@gmail.com', purpose: 'premium' });
     alert(res.data.message + '\nPaymentId: ' + res.data.paymentId);
     // In production, you'd wait for callback/webhook then refresh user status
   }

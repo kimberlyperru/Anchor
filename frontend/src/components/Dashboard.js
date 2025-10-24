@@ -2,14 +2,26 @@ import React, { useEffect, useState } from 'react';
 import API from '../utils/api';
 import { Card, Button, Row, Col } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
+import PremiumActions from './PremiumActions';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
   const [title, setTitle] = useState('');
+  const [user, setUser] = useState(null);
 
   async function load() {
-    const r = await API.get('/chat/rooms');
-    setRooms(r.data);
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const userRes = await API.get('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        setUser(userRes.data);
+      }
+      const roomsRes = await API.get('/chat/rooms');
+      setRooms(roomsRes.data);
+    } catch (error) {
+      console.error("Failed to load dashboard data", error);
+      // Handle error, maybe redirect to login if auth fails
+    }
   }
 
   useEffect(()=>{ load(); }, []);
@@ -29,7 +41,16 @@ export default function Dashboard() {
           <input className="form-control" placeholder="Thread title" value={title} onChange={e=>setTitle(e.target.value)} />
           <Button onClick={createRoom}>Create</Button>
         </div>
-        <div className="mt-3">Premium: Ksh 300 / month — gives access to AI consultant and premium chat features.</div>
+        <div className="mt-3">
+          {user && user.isPremium
+            ? (
+              <div>
+                Welcome Premium User! <Link to="/consultant" className="btn btn-success">Access AI Consultant</Link>
+              </div>
+            )
+            : <PremiumActions userId={user?._id} />
+          }
+        </div>
       </Card>
 
       <Row xs={1} md={2} className="g-3">
