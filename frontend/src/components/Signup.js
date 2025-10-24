@@ -11,6 +11,7 @@ export default function Signup() {
   const [password,setPassword] = useState('');
   const [avatar,setAvatar] = useState('fox');
   const [error,setError] = useState('');
+  const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(false);
   const nav = useNavigate();
 
@@ -18,8 +19,8 @@ export default function Signup() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    try {
-      const res = await API.post('/auth/signup', { email, password, avatar });
+      try {
+      const res = await API.post('/auth/signup', { email, password, avatar, isPremium });
       // backend returns a token; in production, you'd require paying the signup fee before granting access. For this demo, we store the token.
       localStorage.setItem('token', res.data.token);
       nav('/dashboard');
@@ -45,6 +46,22 @@ export default function Signup() {
         </Form.Group>
 
         <Form.Group className="mb-3">
+          <Form.Check
+            type="radio"
+            label="Free Account"
+            name="accountType"
+            checked={!isPremium}
+            onChange={() => setIsPremium(false)}
+          />
+          <Form.Check
+            type="radio"
+            label="Premium Account"
+            name="accountType"
+            checked={isPremium}
+            onChange={() => setIsPremium(true)}
+          />
+        </Form.Group>
+        <Form.Group className="mb-3">
           <Form.Label>Pick an avatar (anonymous)</Form.Label>
           <div className="d-flex gap-2 flex-wrap">
             {avatars.map(a => (
@@ -56,7 +73,12 @@ export default function Signup() {
           </div>
         </Form.Group>
 
-        <div className="mb-3">Sign-up fee for free users: <strong>Ksh 50</strong>. (Demo: no real charge)</div>
+        <div className="mb-3">
+          {isPremium
+            ? <span>Premium subscription: <strong>Ksh 300 / month</strong>. (Demo: no real charge)</span>
+            : <span>Sign-up fee for free users: <strong>Ksh 50</strong>. (Demo: no real charge)</span>
+          }
+        </div>
 
         <Button type="submit" disabled={loading}>
           {loading ? 'Signing up...' : 'Sign up'}
