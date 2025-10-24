@@ -1,2 +1,2 @@
-backend/node_server/
-backend/.env/
+/backend/node_server
+/backend/.env
