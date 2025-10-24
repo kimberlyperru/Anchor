@@ -6,8 +6,27 @@ const jwt = require('jsonwebtoken');
 
 // list chats (rooms)
 router.get('/rooms', async (req, res) => {
-  const rooms = await Chat.find().sort({ createdAt: -1 }).limit(50);
-  res.json(rooms);
+  // Use aggregation to join with messages and count them
+  const rooms = await Chat.aggregate([
+    { $sort: { createdAt: -1 } },
+    { $limit: 50 },
+    {
+      $lookup: {
+        from: 'messages', // the name of the messages collection
+        localField: '_id',
+        foreignField: 'chatId',
+        as: 'messages'
+      }
+    },
+    {
+      $project: {
+        title: 1,
+        createdAt: 1,
+        messageCount: { $size: '$messages' }
+      }
+    }
+  ]);
+  res.json(rooms); // Note: this now returns an array of rooms with messageCount
 });
 
 // create room
