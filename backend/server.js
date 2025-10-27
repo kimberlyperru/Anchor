@@ -36,7 +36,7 @@ app.use(express.json());
 // API Routes
 // ─────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
-app.use('/api/payments', paymentRoutes);
+app.use('/api/mpesa', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/mod', moderationRoutes);
 app.use('/api/ai', aiRoutes);
@@ -52,6 +52,21 @@ import Message from './models/Message.js';
 // ─────────────────────────────────────────────
 import { filterText } from './utils/moderation.js';
 
+// Socket.IO Authentication Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = payload; // Attach user payload to the socket object
+    } catch (err) {
+      console.warn('Socket connection with invalid token.');
+      // Allow connection but as an unauthenticated user
+    }
+  }
+  next();
+});
+
 io.on('connection', (socket) => {
   console.log(`🟢 Socket connected: ${socket.id}`);
 
@@ -62,23 +77,15 @@ io.on('connection', (socket) => {
   socket.on('leaveRoom', ({ roomId }) => socket.leave(roomId));
 
   // New message event
-  socket.on('message', async ({ token, roomId, content, parentId }) => {
+  socket.on('message', async ({ roomId, content, parentId }) => {
     try {
-      let userPayload = null;
-      if (token) {
-        try {
-          userPayload = jwt.verify(token, process.env.JWT_SECRET);
-        } catch (err) {
-          console.warn('Invalid token for socket message');
-        }
-      }
-
+      const user = socket.user; // Get user from the authenticated socket
       const cleaned = filterText(content);
 
       const msg = new Message({
         chatId: roomId,
-        authorId: userPayload ? userPayload.id : null,
-        avatar: userPayload ? userPayload.avatar : generateAnonAvatar(),
+        authorId: user ? user.id : null,
+        avatar: user ? user.avatar : generateAnonAvatar(),
         content: cleaned,
         parentId: parentId || null,
         createdAt: new Date(),
@@ -102,14 +109,14 @@ io.on('connection', (socket) => {
   });
 
   // Delete message event
-  socket.on('deleteMessage', async ({ token, messageId, roomId }) => {
+  socket.on('deleteMessage', async ({ messageId, roomId }) => {
     try {
-      if (!token) return;
-      const userPayload = jwt.verify(token, process.env.JWT_SECRET);
+      const user = socket.user;
+      if (!user) return; // Only authenticated users can delete
       const message = await Message.findById(messageId);
       if (!message) return;
 
-      if (message.authorId?.toString() === userPayload.id) {
+      if (message.authorId?.toString() === user.id) {
         await Message.findByIdAndDelete(messageId);
         io.to(roomId).emit('messageDeleted', { messageId });
       }
@@ -141,5 +148,15 @@ mongoose
   .then(() => {
     console.log('✅ MongoDB connected');
     server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use.`);
+        console.error('Another application (or another instance of this one) is running on this port.');
+        console.error('Please stop the other process or use a different port.');
+        process.exit(1);
+      } else {
+        console.error('❌ Server error:', err);
+      }
+    });
   })
   .catch((err) => console.error('❌ MongoDB connection error:', err));

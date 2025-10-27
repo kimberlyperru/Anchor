@@ -1,114 +1,228 @@
-import express from 'express';
+import 'dotenv/config';
+console.log("✅ paymentRoutes.js file has been loaded."); // <-- ADD THIS LINE
+import express from "express";
+// Use express.Router() for modular routes
 const router = express.Router();
-import IntaSend from 'intasend-node';
-import Payment from '../models/payment.js'; // Use lowercase 'payment'
-import User from '../models/User.js';
-import { authMiddleware } from './auth.js';
-import jwt from 'jsonwebtoken';
+import axios from "axios";
 
-// Initialize IntaSend with your API keys from environment variables
-const intasend = new IntaSend(
-  process.env.INTASEND_PUBLIC_KEY,
-  process.env.INTASEND_SECRET_KEY,
-  true // Use false for production
-);
+// env variables
+const callbackUrl = process.env.CALLBACK_URL;
 
-// @desc    Initiate IntaSend payment
-// @route   POST /api/payments/intasend/init
-// @access  Private
-router.post('/intasend/init', authMiddleware, async (req, res) => {
-  const { amount, purpose, email } = req.body;
-  const userId = req.user._id;
-
-  if (!amount || !purpose || !email) {
-    return res.status(400).json({ message: 'Amount, purpose, and email are required.' });
-  }
-
-  try {
-    // Create a new payment record in your database
-    const payment = new Payment({
-      userId,
-      amount,
-      provider: 'intasend',
-      status: 'pending',
-    });
-    await payment.save();
-
-    // Frontend URL where user is redirected after payment
-    const redirectUrl = `${process.env.FRONTEND_URL}/payment-status?payment_id=${payment._id}`;
-    const webhookUrl = `${process.env.BACKEND_URL}/api/payments/intasend/webhook`;
-
-    // Create a checkout session with IntaSend
-    const response = await intasend.checkout().create({
-      currency: 'KES',
-      amount,
-      email,
-      redirect_url: redirectUrl,
-      api_ref: payment._id.toString(), // Use your internal payment ID as a reference
-      method: 'M-PESA' // Or 'CARD', 'BANK' etc.
-    });
-
-    // Save the checkout ID from IntaSend to your payment record
-    payment.checkoutRequestId = response.id;
-    await payment.save();
-
-    res.json({ redirectUrl: response.url });
-
-  } catch (error) {
-    console.error('IntaSend initiation error:', error);
-    res.status(500).json({ message: 'Failed to initiate IntaSend payment.' });
-  }
+// This route is typically for a health check or base URL,
+// it's now attached to the router.
+router.get("/", (req, res) => {
+  res.send("MPESA integration with Node");
+  // Removed unnecessary timestamp logging
 });
 
-// @desc    IntaSend webhook for payment confirmation
-// @route   POST /api/payments/intasend/webhook
-// @access  Public
-router.post('/intasend/webhook', async (req, res) => {
+// Helper function to get the M-Pesa timestamp
+function getMpesaTimestamp() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+
+  return `${year}${month}${day}${hours}${minutes}${seconds}`;
+}
+
+// Access token function
+async function getAccessToken() {
+  const consumer_key = process.env.CONSUMER_KEY;
+  const consumer_secret = process.env.CONSUMER_SECRET;
+  const url =
+    "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
+  const auth =
+    "Basic " +
+    Buffer.from(`${consumer_key}:${consumer_secret}`).toString("base64");
+
   try {
-    // It's good practice to validate the webhook signature to ensure it's from IntaSend
-    // For simplicity, we'll proceed with the data.
-    const { invoice_id, state, api_ref, transaction_id } = req.body;
-    console.log('IntaSend Webhook Received:', { invoice_id, state, api_ref });
+    const response = await axios.get(url, { headers: { Authorization: auth } });
+    const accessToken = response.data.access_token;
+    if (!accessToken) throw new Error("No access token in OAuth response");
+    console.log("Generated Access Token:", accessToken);
+    return accessToken;
+  } catch (error) {
+    console.error(
+      "Error fetching access token:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+}
 
-    if (!api_ref) {
-      console.warn('Webhook received without api_ref (payment_id).');
-      return res.status(400).send('Bad Request: Missing api_ref.');
-    }
+// Secure route for initiating payments based on a plan.
+// This is the single, correct endpoint for starting a payment.
+router.post("/init", async (req, res) => {
+  const { plan, phoneNumber } = req.body;
 
-    // Find the payment using the api_ref which is our internal payment._id
-    const payment = await Payment.findById(api_ref);
-    if (!payment) {
-      console.error(`Webhook Error: Payment not found for api_ref: ${api_ref}`);
-      return res.status(404).send('Payment record not found.');
-    }
+  if (!plan || !phoneNumber) {
+    console.error("Bad Request to /initiate-payment: Missing plan or phoneNumber. Received body:", req.body);
+    return res.status(400).send("Plan and PhoneNumber are required.");
+  }
 
-    // Prevent processing the same webhook multiple times
-    if (payment.status === 'success') {
-      console.log(`Webhook Info: Payment ${api_ref} already processed.`);
-      return res.status(200).send('OK');
-    }
+  // Server-side price determination
+  const planPrices = {
+    premium: 10, // Example price for the premium plan (e.g., 10 KES)
+    // Add other plans here, e.g., 'pro': 25
+  };
 
-    if (state === 'COMPLETE') {
-      payment.status = 'success';
-      payment.transactionId = transaction_id; // Store IntaSend's transaction ID
+  const amount = planPrices[plan.toLowerCase()];
 
-      // Find the user and update their status
-      const user = await User.findById(payment.userId);
-      if (user) {
-        user.isPremium = true;
-        // You could add more logic here, e.g., setting a `premiumUntil` date
-        await user.save();
+  if (!amount) {
+    console.error(`Invalid plan type received: ${plan}`);
+    return res.status(400).send(`Invalid plan type: '${plan}'. Valid plans are: ${Object.keys(planPrices).join(', ')}`);
+  }
+
+  // Use a helper function to process the payment
+  await processMpesaStkPush(res, { amount, phoneNumber, accountReference: `Plan: ${plan}` });
+});
+
+// Helper function to contain the STK Push logic
+async function processMpesaStkPush(res, { amount, phoneNumber, accountReference, transactionDesc }) {
+  // Basic input validation
+  if (!amount || !phoneNumber) {
+    console.error("Bad Request: Missing amount or phoneNumber. Received body:", req.body);
+    return res.status(400).send("Amount and PhoneNumber are required.");
+  }
+  // You might want more robust phone number validation here (e.g., regex)
+
+  try {
+    const accessToken = await getAccessToken();
+    const url =
+      "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest";
+    const auth = `Bearer ${accessToken}`;
+    const timestamp = getMpesaTimestamp();
+    const password = Buffer.from(
+      process.env.BUSINESS_SHORT_CODE + process.env.PASSKEY + timestamp
+    ).toString("base64");
+
+    const response = await axios.post(
+      url,
+      {
+        BusinessShortCode: process.env.BUSINESS_SHORT_CODE,
+        Password: password,
+        Timestamp: timestamp,
+        TransactionType: "CustomerPayBillOnline",
+        Amount: amount, // Dynamic from request body
+        PartyA: phoneNumber, // Dynamic from request body
+        PartyB: process.env.BUSINESS_SHORT_CODE,
+        PhoneNumber: phoneNumber, // Dynamic from request body
+        CallBackURL: `${callbackUrl}/callback`,
+        AccountReference: accountReference || "Anchor Payment", // Dynamic or default
+        TransactionDesc: transactionDesc || "Mpesa Daraja API STK Push", // Dynamic or default
+      },
+      {
+        headers: {
+          Authorization: auth,
+          "Content-Type": "application/json",
+        },
       }
-    } else if (state === 'FAILED') {
-      payment.status = 'failed';
-      payment.failureReason = req.body.failure_reason || 'Unknown reason from IntaSend';
-    }
-    await payment.save();
-    res.status(200).send('OK');
+    );
+
+    console.log("STK Push Response:", response.data);
+    res.send(
+      "😀 Request is successful done ✔✔. Please enter M-Pesa PIN to complete the transaction"
+    );
   } catch (error) {
-    console.error('Error processing IntaSend webhook:', error);
-    res.status(500).send('Internal Server Error');
+    console.error(
+      "STK Push Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).send("STK Push request failed");
+  }
+}
+
+// STK Push Callback Handler
+router.post("/callback", (req, res) => {
+  const callbackData = req.body.Body?.stkCallback;
+  if (!callbackData) {
+    console.error("Invalid callback data received:", req.body); // Changed to error log
+    return res.status(400).send("Invalid callback data");
+  }
+
+  const { ResultCode, ResultDesc, CheckoutRequestID } = callbackData;
+  switch (ResultCode) {
+    case "0":
+      console.log(
+        `✅ Transaction successful for CheckoutRequestID: ${CheckoutRequestID}`
+      );
+      console.log("Details:", callbackData);
+      break;
+    case "1032":
+      console.log(
+        `❌ Transaction declined by customer for CheckoutRequestID: ${CheckoutRequestID}`
+      );
+      console.log("Reason:", ResultDesc);
+      break;
+    case "1037":
+      console.log(
+        `⏳ Transaction timed out for CheckoutRequestID: ${CheckoutRequestID}`
+      );
+      console.log("Reason:", ResultDesc);
+      break;
+    default:
+      console.log(
+        `⚠️ Transaction failed for CheckoutRequestID: ${CheckoutRequestID}`
+      );
+      console.log("ResultCode:", ResultCode, "Reason:", ResultDesc);
+      break;
+  }
+
+  // Acknowledge the callback to M-Pesa
+  res.status(200).send("Callback received");
+});
+
+// Register URL for C2B
+router.post("/registerurl", async (req, res) => { // Changed to POST
+  const { shortCode } = req.body;
+
+  // Basic input validation
+  if (!shortCode) {
+    return res.status(400).send("ShortCode is required.");
+  }
+
+  try {
+    const accessToken = await getAccessToken();
+    const url = "https://sandbox.safaricom.co.ke/mpesa/c2b/v1/registerurl";
+    const auth = `Bearer ${accessToken}`;
+
+    const response = await axios.post(
+      url,
+      {
+        ShortCode: shortCode, // Dynamic from request body
+        ResponseType: "Completed",
+        ConfirmationURL: `${callbackUrl}/confirmation`,
+        ValidationURL: `${callbackUrl}/validation`,
+      },
+      {
+        headers: {
+          Authorization: auth,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    res.status(200).json(response.data);
+  } catch (error) {
+    console.error(
+      "C2B Register Error:",
+      error.response?.data || error.message
+    );
+    res.status(500).send("❌ C2B URL registration failed");
   }
 });
 
+router.post("/confirmation", (req, res) => {
+  console.log("Confirmation Callback:", req.body);
+  res.status(200).json({ ResultCode: "0", ResultDesc: "Success" });
+});
+
+router.post("/validation", (req, res) => {
+  console.log("Validation Callback:", req.body);
+  res.status(200).json({ ResultCode: "0", ResultDesc: "Success" });
+});
+
+// Export the router for use in server.js
 export default router;

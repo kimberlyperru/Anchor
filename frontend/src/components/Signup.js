@@ -13,6 +13,7 @@ export default function Signup() {
   const [error,setError] = useState('');
   const [isPremium, setIsPremium] = useState(false);
   const [isLoading, setLoading] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const nav = useNavigate();
 
   // This state will hold the details needed for payment after signup
@@ -46,28 +47,32 @@ export default function Signup() {
   setError('');
   setLoading(true);
 
-  try {
-    const { amount, purpose, email } = paymentDetails;
+  if (!phoneNumber) {
+    setError('Please enter your M-Pesa phone number.');
+    setLoading(false);
+    return;
+  }
 
-    // ✅ Retrieve token from localStorage
+  try {
+    const { purpose } = paymentDetails; // 'purpose' will be used as the 'plan'
     const token = localStorage.getItem('token');
 
-    // ✅ Send token in Authorization header
     const res = await API.post(
-      '/payments/intasend/init',
-      { amount, purpose, email },
+      '/mpesa/init', // Corrected endpoint path to match typical API routing
+      { plan: purpose, phoneNumber }, // Sending plan and phoneNumber as expected by the backend
       {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       }
     );
-
-    // ✅ Updated key name (based on your backend response)
-    if (res.data.checkout_url) {
-      window.location.href = res.data.checkout_url;
+    
+    // M-Pesa STK push doesn't redirect, it sends a prompt to the phone.
+    if (res.status === 200) {
+      // On success, navigate to dashboard and show a success message.
+      nav('/dashboard', { state: { message: 'Payment initiated! Please check your phone to complete the transaction.' } });
     } else {
-      throw new Error('Missing checkout URL from backend.');
+      throw new Error(res.data || 'Failed to initiate payment.');
     }
   } catch (err) {
     console.error('Payment error:', err.response?.data || err.message);
@@ -84,9 +89,15 @@ export default function Signup() {
         <Card.Body>
           <Card.Title>Complete Your Signup</Card.Title>
           <Card.Text>Your account is created. Please complete the payment of <strong>Ksh {paymentDetails.amount}</strong> to activate your premium features.</Card.Text>
+          <Form.Group className="my-3">
+            <Form.Label>M-Pesa Phone Number</Form.Label>
+            <Form.Control type="tel" placeholder="e.g. 254712345678" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} required />
+          </Form.Group>
           {error && <Alert variant="danger">{error}</Alert>}
           <Button onClick={handlePayment} disabled={isLoading}>
-            {isLoading ? 'Processing...' : `Pay Ksh ${paymentDetails.amount} with IntaSend`}
+            {isLoading
+              ? 'Processing...'
+              : `Pay Ksh ${paymentDetails.amount} with M-Pesa`}
           </Button>
         </Card.Body>
       </Card>
