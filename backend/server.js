@@ -1,57 +1,78 @@
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const socketio = require('socket.io');
-const jwt = require('jsonwebtoken');
-require('dotenv').config();
+// ─────────────────────────────────────────────
+// Imports
+// ─────────────────────────────────────────────
+import express from 'express';
+import http from 'http';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import 'dotenv/config';
 
-const authRoutes = require('./routes/auth');
-const paymentRoutes = require('./routes/payments');
-const chatRoutes = require('./routes/chat');
-const moderationRoutes = require('./routes/moderation');
+// ─────────────────────────────────────────────
+// Route Imports
+// ─────────────────────────────────────────────
+import { router as authRoutes } from './routes/auth.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import chatRoutes from './routes/chat.js';
+import moderationRoutes from './routes/moderation.js';
+import aiRoutes from './routes/ai.js';
 
+// ─────────────────────────────────────────────
+// App Setup
+// ─────────────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
-const io = socketio(server, { cors: { origin: '*' } });
-
+const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 4000;
 
+// ─────────────────────────────────────────────
+// Middleware
+// ─────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
+// ─────────────────────────────────────────────
+// API Routes
+// ─────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/mod', moderationRoutes);
+app.use('/api/ai', aiRoutes);
 
-// Socket.io realtime chat
-const Chat = require('./models/Chat');
-const Message = require('./models/Message');
+// ─────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────
+import Chat from './models/Chat.js';
+import Message from './models/Message.js';
 
-io.on('connection', socket => {
-  console.log('socket connected', socket.id);
+// ─────────────────────────────────────────────
+// Socket.IO Real-Time Chat
+// ─────────────────────────────────────────────
+import { filterText } from './utils/moderation.js';
 
-  // join a room for a given chat thread (e.g., post ID)
-  socket.on('joinRoom', ({ roomId }) => {
-    socket.join(roomId);
-  });
+io.on('connection', (socket) => {
+  console.log(`🟢 Socket connected: ${socket.id}`);
 
-  socket.on('leaveRoom', ({ roomId }) => {
-    socket.leave(roomId);
-  });
+  // Join a chat room (thread)
+  socket.on('joinRoom', ({ roomId }) => socket.join(roomId));
 
-  // new message
+  // Leave a room
+  socket.on('leaveRoom', ({ roomId }) => socket.leave(roomId));
+
+  // New message event
   socket.on('message', async ({ token, roomId, content, parentId }) => {
     try {
-      // basic auth optional: accept token to fetch user id+avatar
       let userPayload = null;
       if (token) {
-        try { userPayload = jwt.verify(token, process.env.JWT_SECRET); } catch (e) { userPayload = null; }
+        try {
+          userPayload = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (err) {
+          console.warn('Invalid token for socket message');
+        }
       }
 
-      // moderation/filtering
-      const { filterText } = require('./utils/moderation');
       const cleaned = filterText(content);
 
       const msg = new Message({
@@ -60,41 +81,65 @@ io.on('connection', socket => {
         avatar: userPayload ? userPayload.avatar : generateAnonAvatar(),
         content: cleaned,
         parentId: parentId || null,
-        createdAt: new Date()
+        createdAt: new Date(),
       });
+
       await msg.save();
 
-      // broadcast message to room
       io.to(roomId).emit('message', {
         id: msg._id,
         chatId: roomId,
+        userId: msg.authorId,
         avatar: msg.avatar,
         content: msg.content,
         parentId: msg.parentId,
-        createdAt: msg.createdAt
+        createdAt: msg.createdAt,
       });
-
     } catch (err) {
-      console.error('socket message error', err);
+      console.error('❌ Socket message error:', err);
       socket.emit('error', { message: 'Message failed' });
     }
   });
 
+  // Delete message event
+  socket.on('deleteMessage', async ({ token, messageId, roomId }) => {
+    try {
+      if (!token) return;
+      const userPayload = jwt.verify(token, process.env.JWT_SECRET);
+      const message = await Message.findById(messageId);
+      if (!message) return;
+
+      if (message.authorId?.toString() === userPayload.id) {
+        await Message.findByIdAndDelete(messageId);
+        io.to(roomId).emit('messageDeleted', { messageId });
+      }
+    } catch (err) {
+      console.error('❌ Socket delete error:', err);
+      socket.emit('error', { message: 'Failed to delete message' });
+    }
+  });
+
   socket.on('disconnect', () => {
-    // cleanup if needed
+    console.log(`🔴 Socket disconnected: ${socket.id}`);
   });
 });
 
+// ─────────────────────────────────────────────
+// Utility: Generate Anonymous Avatar
+// ─────────────────────────────────────────────
 function generateAnonAvatar() {
-  // choose random animal icon name - frontend maps name -> animated icon
-  const animals = ['fox','bear','owl','lion','tiger','panda','wolf','elephant','dog','cat'];
+  const animals = ['fox', 'bear', 'owl', 'lion', 'tiger', 'panda', 'wolf', 'elephant', 'dog', 'cat'];
   return animals[Math.floor(Math.random() * animals.length)];
 }
 
-// connect db and start
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(()=> {
-    console.log('Mongo connected');
-    server.listen(PORT, ()=> console.log(`Server on ${PORT}`));
+// ─────────────────────────────────────────────
+// MongoDB Connection & Server Start
+// ─────────────────────────────────────────────
+mongoose
+  .connect(process.env.MONGO_URI, {
   })
-  .catch(err => console.error(err));
+  .then(() => {
+    console.log('✅ MongoDB connected');
+    server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  })
+  .catch((err) => console.error('❌ MongoDB connection error:', err));

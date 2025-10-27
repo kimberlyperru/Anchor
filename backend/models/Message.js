@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const MessageSchema = new mongoose.Schema({
   chatId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chat' },
@@ -9,4 +9,4 @@ const MessageSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('Message', MessageSchema);
+export default mongoose.model('Message', MessageSchema);

@@ -2,23 +2,35 @@ import React from 'react';
 import API from '../utils/api';
 import { Button } from 'react-bootstrap';
 
-export default function PremiumActions({ userId }) {
-  async function payWithMpesa() {
-    const res = await API.post('/payments/mpesa/init', { amount: 300, email: 'user@gmail.com', purpose: 'premium' });
-    alert(res.data.message + '\nPaymentId: ' + res.data.paymentId);
-    // In production, you'd wait for callback/webhook then refresh user status
-  }
-
-  async function payWithPaypal() {
-    const res = await API.post('/payments/paypal/create-order', { amount: 300, purpose: 'premium' });
-    window.open(res.data.approvalUrl, '_blank');
-    alert('Opened PayPal sandbox approval page (demo). After approval call capture endpoint from your server.');
+export default function PremiumActions({ user }) { // Pass the whole user object
+  async function payWithIntasend() {
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Token from localStorage:', token);
+      if (!token) {
+        return alert('Please log in to make a payment.');
+      }
+      const config = {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      };
+      console.log('Request config:', config);
+      const res = await API.post('/payments/intasend/init', {
+        amount: 300,
+        purpose: 'premium-renewal',
+        email: user.email, // Pass user's email
+      }, config);
+      if (res.data.redirectUrl) {
+        window.location.href = res.data.redirectUrl;
+      }
+    } catch (error) {
+      console.error('IntaSend initiation failed', error);
+      alert(error.response?.data?.message || 'Could not initiate payment.');
+    }
   }
 
   return (
-    <div className="d-flex gap-2">
-      <Button onClick={payWithMpesa}>Pay Ksh 300 (M-Pesa demo)</Button>
-      <Button onClick={payWithPaypal}>Pay with PayPal (demo)</Button>
-    </div>
+    <Button onClick={payWithIntasend}>Upgrade to Premium (Ksh 300)</Button>
   );
 }

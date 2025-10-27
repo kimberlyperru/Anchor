@@ -1,4 +1,4 @@
-const Filter = require('bad-words');
+import Filter from 'bad-words';
 const filter = new Filter();
 
 // add some custom bad words (example) or regex patterns
@@ -24,4 +24,4 @@ function isExplicit(text) {
   return customBanned.some(w => lowered.includes(w)) || filter.isProfane(lowered);
 }
 
-module.exports = { filterText, isExplicit };
+export { filterText, isExplicit };

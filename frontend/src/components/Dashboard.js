@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import API from '../utils/api';
-import { Card, Button, Row, Col } from 'react-bootstrap';
+import { Card, Button, Row, Col, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
+import avatarImages from '../utils/avatars';
 import PremiumActions from './PremiumActions';
+import './Dashboard.css';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
@@ -44,11 +46,24 @@ export default function Dashboard() {
         <div className="mt-3">
           {user && user.isPremium
             ? (
-              <div>
-                Welcome Premium User! <Link to="/consultant" className="btn btn-success">Access AI Consultant</Link>
+              <div className="d-flex align-items-center">
+                <div style={{ position: 'relative', marginRight: '1rem' }}>
+                  <img src={avatarImages[user.avatar]} alt="avatar" style={{ width: 50, height: 50, borderRadius: '50%' }} />
+                  <Badge 
+                    bg="warning" 
+                    pill 
+                    style={{ 
+                      position: 'absolute', 
+                      top: '-5px', 
+                      right: '-5px',
+                      fontSize: '0.75rem'
+                    }}
+                  >👑</Badge>
+                </div>
+                <span>Welcome Premium User!</span> <Link to="/consultant" className="btn btn-success ms-3">Access AI Consultant</Link>
               </div>
             )
-            : <PremiumActions userId={user?._id} />
+            : <PremiumActions user={user} />
           }
         </div>
       </Card>

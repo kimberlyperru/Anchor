@@ -5,6 +5,7 @@ import ChatRoom from './components/ChatRoom';
 import AuthPage from './AuthPage';
 import AiConsultant from './components/AiConsultant';
 import { Container, Navbar, Button, Nav } from 'react-bootstrap';
+import logo from './logo.png';
 
 function App() {
   const navigate = useNavigate();
@@ -18,25 +19,39 @@ function App() {
   };
 
   return (
-    <>
-      <Navbar bg="dark" variant="dark" className="mb-3">
+    <div className="app-container">
+      <Navbar variant="dark" className="mb-3 app-navbar">
         <Container fluid>
-          <Navbar.Brand>Anchor</Navbar.Brand>
+          <Navbar.Brand>
+            <img
+              src={logo}
+              width="30"
+              height="30"
+              className="d-inline-block align-top"
+              alt="Anchor logo"
+            />{' '}
+            Anchor
+          </Navbar.Brand>
           <Nav className="ms-auto">
             {token && <Button variant="outline-light" onClick={handleLogout}>Log Out</Button>}
           </Nav>
         </Container>
       </Navbar>
-      <Container>
-        <Routes>
-          <Route path="/" element={<Navigate to="/auth" replace />} />
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/room/:id" element={<ChatRoom />} />
-          <Route path="/consultant" element={<AiConsultant />} />
-        </Routes>
-      </Container>
-    </>
+      <main className="main-content">
+        <Container>
+          <Routes>
+            <Route path="/" element={<Navigate to="/auth" replace />} />
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/room/:id" element={<ChatRoom />} />
+            <Route path="/consultant" element={<AiConsultant />} />
+          </Routes>
+        </Container>
+      </main>
+      <footer className="app-footer">
+        <p>made by perru</p>
+      </footer>
+    </div>
   );
 }
 

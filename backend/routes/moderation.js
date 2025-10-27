@@ -1,7 +1,7 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const { filterText, isExplicit } = require('../utils/moderation');
-const Message = require('../models/Message');
+import { filterText, isExplicit } from '../utils/moderation.js';
+import Message from '../models/Message.js';
 
 // quick filter endpoint for frontend before sending content
 router.post('/filter', (req, res) => {
@@ -19,4 +19,4 @@ router.post('/report', async (req, res) => {
   res.json({ ok: true });
 });
 
-module.exports = router;
+export default router;

@@ -1,0 +1,88 @@
+body {
+  background-color: #A52A2A !important;
+  color: #F5F5DC !important;
+}
+
+.card {
+  background-color: #F5F5DC !important; 
+  border: 1px solid #A52A2A;
+}
+
+.card h4, .card h5 {
+  color: #694E4E;
+}
+
+.form-control {
+  background-color: #F5F5DC;
+  color: #694E4E;
+  border-color: #A52A2A;
+}
+
+.form-control::placeholder {
+  color: #694E4E;
+  opacity: 0.7;
+}
+
+.btn-primary {
+  background-color: #A52A2A;
+  border-color: #A52A2A;
+  color: #F5F5DC;
+}
+
+.btn-primary:hover {
+  background-color: #694E4E;
+  border-color: #694E4E;
+  color: #F5F5DC;
+}
+
+.btn-success {
+    background-color: #A52A2A;
+    border-color: #A52A2A;
+    color: #F5F5DC;
+}
+
+.text-muted {
+  color: #694E4E !important;
+  opacity: 0.7;
+}
+
+/* AuthPage Tabs */
+.nav-tabs .nav-link {
+  color: #694E4E;
+  background-color: #F5F5DC;
+  border-color: #A52A2A;
+}
+
+.nav-tabs .nav-link.active {
+  color: #1C2C3A;
+  background-color: #B57A41;
+  border-color: #B57A41;
+}
+
+.nav-tabs {
+    border-bottom-color: #B57A41;
+}
+
+.avatar-select {
+  cursor: pointer;
+  text-align: center;
+  width: 80px;
+  padding: 6px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.avatar-select.selected {
+  border: 2px solid #B57A41;
+  background: #253544;
+}
+
+.avatar-select img {
+    width: 60px;
+    height: 60px;
+}
+
+.avatar-select div {
+    font-size: 12px;
+}

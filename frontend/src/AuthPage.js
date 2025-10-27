@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Container, Tabs, Tab } from 'react-bootstrap';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import './components/Dashboard.css';
 
 export default function AuthPage() {
   return (

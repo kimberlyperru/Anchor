@@ -1,20 +1,21 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const rateLimit = require('express-rate-limit');
-const router = express.Router();
-const User = require('../models/User');
+import express from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
+import { Router } from 'express';
+import User from '../models/User.js';
 
-// limit signup attempts
-const signupLimiter = rateLimit({ windowMs: 60*60*1000, max: 10, message: 'Too many signups' });
+const router = Router();
 
-const { processTextForModeration } = require('../utils/moderation');
+// Rate limiters
+const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: 'Too many signup attempts from this IP, please try again after an hour' });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: 'Too many login attempts from this IP, please try again after 15 minutes' });
 
 // signup: note your product spec said free users pay Ksh50 sign-up fee and premium Ksh300/month.
 // For demo, we accept signup and return price to pay; payment endpoints live in /api/payments
 router.post('/signup', signupLimiter, async (req, res) => {
   try {
-    const { email, password, avatar } = req.body;
+    const { email, password, avatar, isPremium } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Missing email/password' });
 
     // basic moderation check on email? (skip)
@@ -22,12 +23,18 @@ router.post('/signup', signupLimiter, async (req, res) => {
     if (existing) return res.status(400).json({ message: 'Email exists' });
 
     const hash = await bcrypt.hash(password, 10);
-    const user = new User({ email, passwordHash: hash, avatar: avatar || 'fox' });
+    const user = new User({ email, passwordHash: hash, avatar: avatar || 'fox', isPremium: !!isPremium, isActive: false });
     await user.save();
 
-    // Note: sign-up fee payment should be collected before activation in a real flow.
-    const token = jwt.sign({ id: user._id, avatar: user.avatar }, process.env.JWT_SECRET, { expiresIn: '30d' });
-    res.json({ message: 'User created (pending pay)', user: { id: user._id, avatar: user.avatar }, token });
+    // Instead of returning a token, we return payment details.
+    // The user will be activated and get a token via the payment callback.
+    const amount = isPremium ? 300 : 50; // Premium or free (with signup fee)
+    const purpose = isPremium ? 'premium' : 'signup-free';
+
+    res.status(201).json({
+      message: 'User created. Proceed to payment.',
+      paymentDetails: { userId: user._id, amount, purpose, email: user.email }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -35,15 +42,18 @@ router.post('/signup', signupLimiter, async (req, res) => {
 });
 
 // login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid creds' });
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(400).json({ message: 'Invalid creds' });
+    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id, avatar: user.avatar }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    if (!user.isActive) return res.status(403).json({ message: 'Account not active. Please complete payment.' });
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+
+    const token = jwt.sign({ id: user._id, avatar: user.avatar, isPremium: user.isPremium, isAdmin: user.isAdmin }, process.env.JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: { id: user._id, avatar: user.avatar, isPremium: user.isPremium, premiumUntil: user.premiumUntil } });
   } catch (err) {
     console.error(err);
@@ -66,9 +76,23 @@ function authMiddleware(req, res, next) {
 }
 
 router.get('/me', authMiddleware, async (req, res) => {
-  const User = require('../models/User');
-  const u = await User.findById(req.user.id).select('-passwordHash');
-  res.json(u);
+  try {
+    const user = await User.findById(req.user.id).select('-passwordHash');
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
-module.exports = router;
+function adminMiddleware(req, res, next) {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ message: 'Admin access required.' });
+  }
+  next();
+}
+
+export {
+  router,
+  authMiddleware,
+  adminMiddleware,
+};

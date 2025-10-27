@@ -1,8 +1,8 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const Chat = require('../models/Chat');
-const Message = require('../models/Message');
-const jwt = require('jsonwebtoken');
+import Chat from '../models/Chat.js';
+import Message from '../models/Message.js';
+import jwt from 'jsonwebtoken';
 
 // list chats (rooms)
 router.get('/rooms', async (req, res) => {
@@ -41,8 +41,19 @@ router.post('/rooms', async (req, res) => {
 // fetch messages for room (threaded)
 router.get('/rooms/:id/messages', async (req, res) => {
   const { id } = req.params;
-  const messages = await Message.find({ chatId: id }).sort({ createdAt: 1 }).limit(100);
+  // Use lean() for performance and select() to shape the output
+  const messages = await Message.find({ chatId: id })
+    .sort({ createdAt: 1 })
+    .limit(100)
+    .select({
+      content: 1,
+      _id: 1,
+      createdAt: 1,
+      avatar: 1,
+      userId: '$authorId' // Project authorId as userId
+    })
+    .lean();
   res.json(messages);
 });
 
-module.exports = router;
+export default router;

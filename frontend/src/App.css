@@ -14,7 +14,7 @@
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: #A52A2A;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -35,4 +35,40 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.app-navbar {
+  background-color: #F5F5DC !important;
+}
+
+.app-navbar .navbar-brand {
+  color: #694E4E !important;
+}
+
+.app-navbar .btn-outline-light {
+  color: #694E4E;
+  border-color: #694E4E;
+}
+
+.app-navbar .btn-outline-light:hover {
+  color: #F5F5DC;
+  background-color: #694E4E;
+  border-color: #694E4E;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex-grow: 1;
+}
+
+.app-footer {
+  background-color: #F5F5DC;
+  color: #694E4E;
+  text-align: center;
+  padding: 10px 0;
 }

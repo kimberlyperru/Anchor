@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Form, Button, Container } from 'react-bootstrap';
+import { Card, Form, Button, Container, Alert } from 'react-bootstrap';
 import API from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,6 +8,8 @@ export default function AiConsultant() {
   const [conversation, setConversation] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState(null);
+  const [error, setError] = useState('');
   const nav = useNavigate();
   const bottomRef = useRef(null);
 
@@ -41,32 +43,76 @@ export default function AiConsultant() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation]);
 
+  async function handleCopy(text, index) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000); // "Copied!" message disappears after 2s
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  }
+
   async function handleSend() {
     if (!input.trim()) return;
 
-    const userMessage = { role: 'user', content: input };
-    const newConversation = [...conversation, userMessage];
-    setConversation(newConversation);
+    const userMessage = { role: 'user', content: input.trim() };
+    // Add user message and an empty assistant message for the stream
+    const newConversation = [...conversation, userMessage, { role: 'assistant', content: '' }];
+    setConversation(newConversation); 
     setInput('');
     setIsTyping(true);
+    setError('');
 
     // Prepare the history for the API, including a system prompt.
     const apiHistory = [
       { role: 'system', content: 'You are a helpful AI consultant.' },
-      ...newConversation
+      ...newConversation.slice(0, -1) // Send history up to the user's new message
     ];
 
     try {
       const token = localStorage.getItem('token');
-      const res = await API.post('/ai/chat', { history: apiHistory }, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/ai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ history: apiHistory })
       });
-      const aiMessage = { role: 'assistant', content: res.data.reply };
-      setConversation(prev => [...prev, aiMessage]);
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Failed to fetch stream');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'));
+
+        for (const line of lines) {
+          const jsonStr = line.replace('data: ', '');
+          const data = JSON.parse(jsonStr);
+          if (data.reply) {
+            setConversation(prev => {
+              const lastMsg = prev[prev.length - 1];
+              lastMsg.content += data.reply;
+              return [...prev.slice(0, -1), lastMsg];
+            });
+          }
+        }
+      }
     } catch (error) {
       console.error("Error getting AI response", error);
-      const errorMessage = { role: 'assistant', content: "Sorry, I'm having trouble connecting right now." };
-      setConversation(prev => [...prev, errorMessage]);
+      setError(error.message || "Sorry, I'm having trouble connecting right now.");
+      // Remove the empty assistant message on error
+      setConversation(prev => prev.slice(0, -1));
     } finally {
       setIsTyping(false);
     }
@@ -83,19 +129,32 @@ export default function AiConsultant() {
         <Card.Body style={{ height: '70vh', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto', marginBottom: '1rem', padding: '10px' }}>
             {conversation.map((msg, index) => (
-              <div key={index} className={`p-2 my-2 rounded ${msg.role === 'assistant' ? 'bg-light text-dark' : 'bg-primary text-white ms-auto'}`} style={{ maxWidth: '75%' }}>
-                <strong>{msg.role === 'assistant' ? 'AI' : 'You'}:</strong> {msg.content}
+              <div key={index} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div className={`p-2 my-2 rounded ${msg.role === 'assistant' ? 'bg-light text-dark' : 'bg-primary text-white'}`} style={{ maxWidth: '75%' }}>
+                  <strong>{msg.role === 'assistant' ? 'AI' : 'You'}:</strong> {msg.content}
+                  {msg.role === 'assistant' && msg.content && (
+                    <div className="text-end mt-2">
+                      <Button variant="outline-secondary" size="sm" onClick={() => handleCopy(msg.content, index)}>
+                        {copiedIndex === index ? 'Copied!' : 'Copy'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
-            {isTyping && <div className="p-2 my-2 rounded bg-light text-dark" style={{ maxWidth: '75%' }}><strong>AI:</strong> Typing...</div>}
+            {isTyping && conversation[conversation.length - 1]?.content === '' && (
+              <div className="p-2 my-2 rounded bg-light text-dark" style={{ maxWidth: '75%' }}><strong>AI:</strong> Typing...</div>
+            )}
             <div ref={bottomRef} />
           </div>
+          {error && <Alert variant="danger" className="mb-2">{error}</Alert>}
           <Form onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
             <div className="d-flex">
               <Form.Control
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => { setInput(e.target.value); setError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 placeholder="Ask the AI consultant anything..."
                 disabled={isTyping}
               />

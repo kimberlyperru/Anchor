@@ -1,0 +1,40 @@
+/* AdminDashboard.css */
+
+.admin-dashboard-container {
+  /* A very light shade of smoky blue-gray for the background */
+  background-color: #f4f6f8; 
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+/* Custom Table Header */
+.table-header-custom {
+  background-color: #708090; /* smokyBlueGray */
+  color: white;
+}
+
+/* Custom Status Badges */
+.status-badge {
+  color: #fff;
+  display: inline-block;
+  padding: 0.35em 0.65em;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.375rem; /* from Bootstrap's .badge */
+}
+
+.status-badge.status-success {
+  background-color: #708090; /* smokyBlueGray */
+}
+
+.status-badge.status-pending {
+  background-color: #CD7F32; /* bronze */
+}
+
+.status-badge.status-failed {
+  background-color: #36454F; /* charcoalGray */
+}

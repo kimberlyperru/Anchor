@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import API from '../utils/api';
-import { Form, Button } from 'react-bootstrap';
+import { Form, Button, Card, Alert } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import avatarImages from '../utils/avatars';
 
@@ -12,23 +12,85 @@ export default function Signup() {
   const [avatar,setAvatar] = useState('fox');
   const [error,setError] = useState('');
   const [isPremium, setIsPremium] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setLoading] = useState(false);
   const nav = useNavigate();
+
+  // This state will hold the details needed for payment after signup
+  const [paymentDetails, setPaymentDetails] = useState(null);
 
   async function handleSignup(e) {
     e.preventDefault();
     setLoading(true);
     setError('');
-      try {
-      const res = await API.post('/auth/signup', { email, password, avatar, isPremium });
-      // backend returns a token; in production, you'd require paying the signup fee before granting access. For this demo, we store the token.
-      localStorage.setItem('token', res.data.token);
-      nav('/dashboard');
+    try {
+      const response = await API.post('/auth/signup', { email, password, avatar, isPremium });
+      // If signup requires payment, store details and move to payment step.
+      if (response.data.paymentDetails) {
+        // We also need the token to make authenticated API calls for payment
+        localStorage.setItem('token', response.data.token);
+        setPaymentDetails({ ...response.data.paymentDetails, email });
+      } else {
+        // If no payment is needed (e.g., free user), log them in directly.
+        localStorage.setItem('token', response.data.token);
+        nav('/dashboard');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Signup failed');
     } finally {
       setLoading(false);
     }
+  }
+  
+  // This function handles the payment step after signup is complete.
+  const handlePayment = async () => {
+  setError('');
+  setLoading(true);
+
+  try {
+    const { amount, purpose, email } = paymentDetails;
+
+    // ✅ Retrieve token from localStorage
+    const token = localStorage.getItem('token');
+
+    // ✅ Send token in Authorization header
+    const res = await API.post(
+      '/payments/intasend/init',
+      { amount, purpose, email },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    // ✅ Updated key name (based on your backend response)
+    if (res.data.checkout_url) {
+      window.location.href = res.data.checkout_url;
+    } else {
+      throw new Error('Missing checkout URL from backend.');
+    }
+  } catch (err) {
+    console.error('Payment error:', err.response?.data || err.message);
+    setError(err.response?.data?.message || 'An error occurred during payment.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // If we have paymentDetails, we show the payment UI instead of the signup form.
+  if (paymentDetails) {
+    return (
+      <Card className="p-3">
+        <Card.Body>
+          <Card.Title>Complete Your Signup</Card.Title>
+          <Card.Text>Your account is created. Please complete the payment of <strong>Ksh {paymentDetails.amount}</strong> to activate your premium features.</Card.Text>
+          {error && <Alert variant="danger">{error}</Alert>}
+          <Button onClick={handlePayment} disabled={isLoading}>
+            {isLoading ? 'Processing...' : `Pay Ksh ${paymentDetails.amount} with IntaSend`}
+          </Button>
+        </Card.Body>
+      </Card>
+    );
   }
 
   return (
@@ -65,9 +127,9 @@ export default function Signup() {
           <Form.Label>Pick an avatar (anonymous)</Form.Label>
           <div className="d-flex gap-2 flex-wrap">
             {avatars.map(a => (
-              <div key={a} onClick={()=>setAvatar(a)} style={{cursor:'pointer', textAlign:'center', width:80, padding:6, border: avatar===a ? '2px solid #0d6efd' : '1px solid #ddd', borderRadius:8, background: avatar === a ? '#f0f8ff' : 'transparent'}}>
-                <img src={avatarImages[a]} alt={a} style={{width:60, height:60}}/>
-                <div style={{fontSize:12}}>{a}</div>
+              <div key={a} onClick={()=>setAvatar(a)} className={`avatar-select ${avatar === a ? 'selected' : ''}`}>
+                <img src={avatarImages[a]} alt={a} />
+                <div>{a}</div>
               </div>
             ))}
           </div>
@@ -80,8 +142,8 @@ export default function Signup() {
           }
         </div>
 
-        <Button type="submit" disabled={loading}>
-          {loading ? 'Signing up...' : 'Sign up'}
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? 'Creating Account...' : 'Sign up'}
         </Button>
       </Form>
     </div>
