@@ -57,22 +57,22 @@ export default function AiConsultant() {
     if (!input.trim()) return;
 
     const userMessage = { role: 'user', content: input.trim() };
-    // Add user message and an empty assistant message for the stream
-    const newConversation = [...conversation, userMessage, { role: 'assistant', content: '' }];
-    setConversation(newConversation); 
+    const currentConversation = [...conversation, userMessage];
+    // Add user message and an empty assistant message for the stream placeholder
+    setConversation([...currentConversation, { role: 'assistant', content: '' }]);
     setInput('');
     setIsTyping(true);
     setError('');
 
-    // Prepare the history for the API, including a system prompt.
+    // Prepare the history for the API. The backend handles the system prompt.
     const apiHistory = [
       { role: 'system', content: 'You are a helpful AI consultant.' },
-      ...newConversation.slice(0, -1) // Send history up to the user's new message
+      ...currentConversation
     ];
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/ai/chat`, {
+      const response = await fetch(`${API.defaults.baseURL}/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -111,8 +111,8 @@ export default function AiConsultant() {
     } catch (error) {
       console.error("Error getting AI response", error);
       setError(error.message || "Sorry, I'm having trouble connecting right now.");
-      // Remove the empty assistant message on error
-      setConversation(prev => prev.slice(0, -1));
+      // On error, revert the conversation to its state before the user's message was added.
+      setConversation(currentConversation);
     } finally {
       setIsTyping(false);
     }
@@ -142,8 +142,8 @@ export default function AiConsultant() {
                 </div>
               </div>
             ))}
-            {isTyping && conversation[conversation.length - 1]?.content === '' && (
-              <div className="p-2 my-2 rounded bg-light text-dark" style={{ maxWidth: '75%' }}><strong>AI:</strong> Typing...</div>
+            {isTyping && (
+              <div className="p-2 my-2 rounded bg-light text-dark" style={{ maxWidth: '75%', alignSelf: 'flex-start' }}><strong>AI:</strong> Typing...</div>
             )}
             <div ref={bottomRef} />
           </div>

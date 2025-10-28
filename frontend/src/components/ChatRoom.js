@@ -6,17 +6,23 @@ import { jwtDecode } from 'jwt-decode';
 import { Card, Button, Form } from 'react-bootstrap';
 import avatarImages from '../utils/avatars';
 
-const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:4000');
-
 export default function ChatRoom() {
   const { id } = useParams();
+  const [socket, setSocket] = useState(null);
   const [messages, setMessages] = useState([]);
   const [text,setText] = useState('');
   const [user,setUser] = useState(null);
   const [token,setToken] = useState(localStorage.getItem('token'));
   const bottomRef = useRef();
 
-  useEffect(()=> {
+  useEffect(() => {
+    const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:4000', {
+      auth: {
+        token: localStorage.getItem('token')
+      }
+    });
+    setSocket(newSocket);
+
     socket.emit('joinRoom', { roomId: id });
     API.get(`/chat/rooms/${id}/messages`).then(r => setMessages(r.data || []));
 
@@ -35,10 +41,11 @@ export default function ChatRoom() {
 
     return () => {
       socket.emit('leaveRoom', { roomId: id });
-      socket.off('message');
-      socket.off('messageDeleted');
+      newSocket.off('message');
+      newSocket.off('messageDeleted');
+      newSocket.disconnect();
     }
-  }, [id]);
+  }, [id, token]);
 
   async function deleteMessage(messageId) {
     if (window.confirm('Are you sure you want to delete this post?')) {
@@ -53,7 +60,7 @@ export default function ChatRoom() {
   async function send() {
     if (!text.trim()) return;
     // optional: call moderation filter endpoint first
-    const filtered = await API.post('/mod/filter', { text }).then(r => r.data.cleaned);
+    const filtered = await API.post('/mod/filter', { text }).then(r => r.data.cleaned || text);
     socket.emit('message', { token, roomId: id, content: filtered, parentId: null });
     setText('');
   }
