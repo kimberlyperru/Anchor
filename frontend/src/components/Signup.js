@@ -114,9 +114,8 @@ export default function Signup() {
       const res = await API.post(
         '/mpesa/init',
         {
-          plan: isPremium ? 'premium' : 'signup-free',
-          phone, // fixed key
-          userId: paymentDetails.userId,
+          amount: paymentDetails.amount,
+          phoneNumber: phone,
         },
         config
       );

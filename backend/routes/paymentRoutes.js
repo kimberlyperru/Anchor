@@ -2,30 +2,28 @@ import express from 'express';
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import { authMiddleware } from './auth.js';
-import { initiatePayment } from '../paymentController.js';
+import createError from '../utils/createError.js';
 import Payment from '../models/payment.js';
 import { initiateStkPush } from '../utils/mpesa.js';
 
 const router = express.Router();
+console.log('paymentRoutes.js loaded, defining /init route');
 
 /**
- * This is a generic payment initiation endpoint.
- * It's protected and uses the logic from paymentController.
+ * This is the M-Pesa STK Push initiation endpoint.
  */
-router.post('/init', authMiddleware, initiatePayment);
-
-// This is the M-Pesa STK Push initiation endpoint.
-router.post('/stkpush', authMiddleware, async (req, res) => {
-  const { amount, phone } = req.body; // userId is now extracted from token
+router.post('/init', authMiddleware, async (req, res, next) => {
+  const { amount, phoneNumber } = req.body; 
+  const actualUserId = req.user.id; // Use the user ID from authMiddleware
 
   try {
-    const token = req.headers.authorization.split(' ')[1]; // Get token from authMiddleware
-    const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
-    const actualUserId = decodedToken.userId; // Assuming userId is in the token
+    if (!amount || !phoneNumber) {
+      return next(createError(400, 'Amount and phoneNumber are required.'));
+    }
 
-    console.log(`Initiating STK push for user ${actualUserId} of amount ${amount} to phone ${phone}`);
+    console.log(`Initiating STK push for user ${actualUserId} of amount ${amount} to phone ${phoneNumber}`);
 
-    const stkPushResponse = await initiateStkPush(phone, amount, actualUserId, 'Premium Subscription');
+    const stkPushResponse = await initiateStkPush(phoneNumber, amount, actualUserId, 'Premium Subscription');
     console.log('STK Push Response:', stkPushResponse);
 
     // Create a pending payment record here with CheckoutRequestID
@@ -40,7 +38,7 @@ router.post('/stkpush', authMiddleware, async (req, res) => {
     res.status(200).json({ message: 'STK push initiated. Please check your phone to complete the payment.', data: stkPushResponse });
   } catch (mpesaError) {
     console.error('M-Pesa STK Push initiation failed:', mpesaError.message);
-    return res.status(500).json({ message: 'Failed to initiate STK Push.', error: mpesaError.message });
+    return next(createError(500, `Failed to initiate STK Push: ${mpesaError.message}`));
   }
 });
 
@@ -59,7 +57,7 @@ router.post('/callback', async (req, res) => {
     return res.json({ ResultCode: 1, ResultDesc: 'Rejected' });
   }
 
-  const { ResultCode, ResultDesc, CallbackMetadata } = stkCallback;
+  const { ResultCode, ResultDesc, CallbackMetadata, CheckoutRequestID } = stkCallback;
 
   // Extract metadata to find the user and transaction details
   const metadata = CallbackMetadata?.Item;
@@ -67,90 +65,65 @@ router.post('/callback', async (req, res) => {
   const mpesaReceiptNumber = metadata?.find(item => item.Name === 'MpesaReceiptNumber')?.Value;
   const amount = metadata?.find(item => item.Name === 'Amount')?.Value;
 
-  let paymentStatus = 'pending';
-  let failureReason = null;
+  // Find the original payment record using the CheckoutRequestID
+  const payment = await Payment.findOne({ checkoutRequestId: CheckoutRequestID });
+
+  if (!payment) {
+    console.error(`Callback received for unknown CheckoutRequestID: ${CheckoutRequestID}`);
+    // Acknowledge receipt to M-Pesa but take no further action.
+    return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
+
+  // Idempotency Check: If payment is already successful, do nothing further.
+  if (payment.status === 'success') {
+    console.log(`Callback for already processed CheckoutRequestID: ${CheckoutRequestID}. Acknowledging and exiting.`);
+    return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
 
   // A. Check if the payment was successful
   if (ResultCode === 0) {
-    paymentStatus = 'success';
+    payment.status = 'success';
+    payment.transactionId = mpesaReceiptNumber;
+
     try {
-      if (!userId) {
-        console.error('Callback received but no UserId found in AccountReference.');
-        // Still create a payment record even if userId is missing, but mark as failed or needing manual review
-        await Payment.create({
-          provider: 'mpesa',
-          amount: amount,
-          transactionId: mpesaReceiptNumber,
-          status: 'failed',
-          failureReason: 'UserId missing in callback',
-        });
-        return res.json({ ResultCode: 0, ResultDesc: 'Accepted' }); // Acknowledge receipt
-      }
-
-      const user = await User.findById(userId);
+      const user = await User.findById(payment.userId);
       if (!user) {
-        console.error(`User with ID ${userId} not found for activation.`);
-        await Payment.create({
-          userId: userId,
-          provider: 'mpesa',
-          amount: amount,
-          transactionId: mpesaReceiptNumber,
-          status: 'failed',
-          failureReason: `User with ID ${userId} not found`,
-        });
-        return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+        throw new Error(`User with ID ${payment.userId} not found for activation.`);
       }
-
-      // Create a successful payment record
-      await Payment.create({
-        userId: userId,
-        provider: 'mpesa',
-        amount: amount,
-        transactionId: mpesaReceiptNumber,
-        status: paymentStatus,
-      });
 
       // C. Determine if it was a premium or standard signup payment
       const updates = { isActive: true };
+      // This logic assumes the user's premium status was set before payment.
+      // You might want to check the payment amount against a premium price instead.
       if (user.isPremium) {
         const premiumExpiry = new Date();
         premiumExpiry.setDate(premiumExpiry.getDate() + 30); // Set premium for 30 days
         updates.premiumUntil = premiumExpiry;
-        console.log(`Activating premium user ${user.email} until ${premiumExpiry.toISOString()}`);
+        console.log(`Activating premium for user ${user.email} until ${premiumExpiry.toISOString()}`);
       } else {
         console.log(`Activating standard user ${user.email}`);
       }
 
       // D. Update the user in the database
-      await User.findByIdAndUpdate(userId, { $set: updates });
+      await User.findByIdAndUpdate(payment.userId, { $set: updates });
+      console.log(`Successfully activated user ${payment.userId}`);
 
     } catch (error) {
       console.error('Error processing successful M-Pesa callback:', error);
-      // If an error occurs during user update, still record the payment as failed or needing review
-      await Payment.create({
-        userId: userId,
-        provider: 'mpesa',
-        amount: amount,
-        transactionId: mpesaReceiptNumber,
-        status: 'failed',
-        failureReason: `Error during user activation: ${error.message}`,
-      });
+      payment.status = 'failed';
+      payment.failureReason = `Error during user activation: ${error.message}`;
+    } finally {
+      await payment.save();
+      if (payment.status === 'failed') {
+        return res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+      }
     }
   } else {
     // Log failed transaction
     console.log('M-Pesa transaction failed with code:', ResultCode, ResultDesc);
-    paymentStatus = 'failed';
-    failureReason = ResultDesc;
-
-    // Create a failed payment record
-    await Payment.create({
-      userId: userId,
-      provider: 'mpesa',
-      amount: amount,
-      transactionId: mpesaReceiptNumber,
-      status: paymentStatus,
-      failureReason: failureReason,
-    });
+    payment.status = 'failed';
+    payment.failureReason = ResultDesc;
+    await payment.save();
   }
 
   // E. Always respond to M-Pesa to acknowledge receipt of the callback

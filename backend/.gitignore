@@ -1,5 +1,5 @@
-/backend/node_modules
-/backend/.env
-backend/.env
-backend/node_modules
+# Dependency directories
+node_modules/
 
+# Environment variables
+.env

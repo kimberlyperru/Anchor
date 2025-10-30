@@ -71,9 +71,8 @@ export const initiatePayment = async (req, res, next) => {
         // For other providers (like PayPal mock), update status to success and user's premium
         payment.status = 'success';
         // You might want to store a transaction ID from the provider
-        // payment.checkoutRequestId = providerResponse.transactionId;
-        await payment.save();
-
+        payment.transactionId = providerResponse.transactionId; // Example
+        
         // Update user's premium status
         const userToUpdate = await User.findById(userId);
         if (userToUpdate) {
@@ -84,6 +83,9 @@ export const initiatePayment = async (req, res, next) => {
           userToUpdate.premiumUntil = premiumUntilDate;
           await userToUpdate.save();
         }
+
+        await payment.save(); // Save payment record after all updates
+
         res.status(201).json({
           message: 'Payment successful',
           paymentId: payment._id,
