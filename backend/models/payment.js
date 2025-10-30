@@ -8,7 +8,7 @@ const paymentSchema = new mongoose.Schema({
   },
   provider: {
     type: String,
-    enum: ['intasend'],
+    enum: ['mpesa'],
     required: true,
   },
   amount: {

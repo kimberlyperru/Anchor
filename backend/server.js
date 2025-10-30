@@ -17,6 +17,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import chatRoutes from './routes/chat.js';
 import moderationRoutes from './routes/moderation.js';
 import aiRoutes from './routes/ai.js';
+import adminRoutes from './routes/admin.js';
 
 // ─────────────────────────────────────────────
 // App Setup
@@ -40,6 +41,7 @@ app.use('/api/mpesa', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/mod', moderationRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ─────────────────────────────────────────────
 // Models
@@ -53,15 +55,28 @@ import Message from './models/Message.js';
 import { filterText } from './utils/moderation.js';
 
 // Socket.IO Authentication Middleware
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   if (token) {
     try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = payload; // Attach user payload to the socket object
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // Fetch the latest user data from the database
+      const user = await User.findById(decoded.id).select('-passwordHash').lean();
+
+      if (user && user.isActive && !user.isBanned) {
+        socket.user = user; // Attach the full, up-to-date user object
+      } else {
+        // User is not active, banned, or doesn't exist. Reject the connection.
+        const err = new Error("User not authorized");
+        err.data = { content: "Your account is inactive or suspended." };
+        return next(err);
+      }
     } catch (err) {
       console.warn('Socket connection with invalid token.');
-      // Allow connection but as an unauthenticated user
+      // Explicitly reject the connection if the token is invalid
+      const authError = new Error("Authentication error");
+      authError.data = { content: "Invalid token. Please log in again." };
+      return next(authError);
     }
   }
   next();
@@ -79,13 +94,19 @@ io.on('connection', (socket) => {
   // New message event
   socket.on('message', async ({ roomId, content, parentId }) => {
     try {
-      const user = socket.user; // Get user from the authenticated socket
+      const user = socket.user; // Get user from the authenticated socket.
+
+      // Only active, authenticated users can send messages.
+      if (!user) {
+        return socket.emit('error', { message: 'You must be logged in to send messages.' });
+      }
+
       const cleaned = filterText(content);
 
       const msg = new Message({
         chatId: roomId,
-        authorId: user ? user.id : null,
-        avatar: user ? user.avatar : generateAnonAvatar(),
+        authorId: user._id,
+        avatar: user.avatar,
         content: cleaned,
         parentId: parentId || null,
         createdAt: new Date(),

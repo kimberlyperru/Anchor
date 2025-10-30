@@ -26,22 +26,18 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const user = new User({ email, passwordHash: hash, avatar: avatar || 'fox', isPremium: !!isPremium, isActive: false });
     await user.save();
 
-    if (isPremium) {
-      // For premium users, return payment details to trigger the payment flow.
-      const amount = 300; // Premium price
-      const purpose = 'premium';
-      res.status(201).json({
-        message: 'User created. Proceed to payment.',
-        paymentDetails: { userId: user._id, amount, purpose, email: user.email }
-      });
-    } else {
-      // For free users, activate them immediately and return a token.
-      // This simplifies the flow and avoids unnecessary payment polling.
-      user.isActive = true;
-      await user.save();
-      const token = jwt.sign({ id: user._id, avatar: user.avatar, isPremium: user.isPremium, isAdmin: user.isAdmin }, process.env.JWT_SECRET, { expiresIn: '30d' });
-      res.status(201).json({ token, user: { id: user._id, avatar: user.avatar, isPremium: user.isPremium } });
-    }
+    // Both free and premium users go through a payment flow.
+    const amount = isPremium ? 300 : 50; // Premium: 300, Free signup: 50
+    const purpose = isPremium ? 'premium' : 'signup-free';
+
+    // ✅ Create a short-lived token for payment authorization
+    const paymentToken = jwt.sign({ id: user._id, purpose: 'payment' }, process.env.JWT_SECRET, { expiresIn: '15m' });
+
+    res.status(201).json({
+      message: 'User created. Proceed to payment.',
+      // ✅ Send the payment token to the frontend
+      paymentDetails: { userId: user._id, amount, purpose, email: user.email, token: paymentToken }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -52,7 +48,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    let user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
 
     if (!user.isActive) return res.status(403).json({ message: 'Account not active. Please complete payment.' });
@@ -60,8 +56,18 @@ router.post('/login', loginLimiter, async (req, res) => {
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
 
+    // ✅ Check for premium expiration
+    if (user.isPremium && user.premiumUntil && new Date() > new Date(user.premiumUntil)) {
+      user.isPremium = false;
+      user.premiumUntil = null;
+      await user.save();
+    }
+
+    user = await User.findById(user._id); // Re-fetch user to get the latest state
+
     const token = jwt.sign({ id: user._id, avatar: user.avatar, isPremium: user.isPremium, isAdmin: user.isAdmin }, process.env.JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user: { id: user._id, avatar: user.avatar, isPremium: user.isPremium, premiumUntil: user.premiumUntil } });
+    const userForFrontend = await User.findById(user._id).select('-passwordHash');
+    res.json({ token, user: userForFrontend });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -84,7 +90,16 @@ function authMiddleware(req, res, next) {
 
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-passwordHash');
+    let user = await User.findById(req.user.id).select('-passwordHash');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // ✅ Check for premium expiration on /me, to keep frontend in sync
+    if (user.isPremium && user.premiumUntil && new Date() > new Date(user.premiumUntil)) {
+      user.isPremium = false;
+      user.premiumUntil = null;
+      await user.save();
+    }
+
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -94,7 +109,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 // Get user status without full auth, used for payment polling
 router.get('/me-unactivated/:userId', async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).select('isActive isPremium');
+    const user = await User.findById(req.params.userId).select('isActive isPremium premiumUntil');
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (err) {

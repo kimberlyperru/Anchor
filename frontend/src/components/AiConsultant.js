@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Form, Button, Container, Alert } from 'react-bootstrap';
+import { Card, Form, Button, Container, Alert, Spinner } from 'react-bootstrap';
 import API from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -22,12 +22,8 @@ export default function AiConsultant() {
       }
       try {
         const res = await API.get('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.data.isPremium) {
-          nav('/dashboard'); // Redirect non-premium users
-        } else {
-          console.log('User is premium:', res.data.isPremium);
-          setConversation([{ role: 'assistant', content: 'Hello! As a premium user, you have exclusive access to my consultation services. How can I assist you today?' }]);
-        }
+        // PremiumRoute handles access, so we just set the initial message.
+        setConversation([{ role: 'assistant', content: 'Hello! As a premium user, you have exclusive access to my consultation services. How can I assist you today?' }]);
       } catch (error) {
         console.error('Authentication error', error);
         localStorage.removeItem('token');
@@ -143,11 +139,12 @@ export default function AiConsultant() {
               </div>
             ))}
             {isTyping && (
-              <div className="p-2 my-2 rounded bg-light text-dark" style={{ maxWidth: '75%', alignSelf: 'flex-start' }}><strong>AI:</strong> Typing...</div>
+              <div className="p-2 my-2 rounded bg-light text-dark" style={{ maxWidth: '75%', alignSelf: 'flex-start' }}>
+                <strong>AI:</strong> <Spinner animation="grow" size="sm" className="me-1" />Typing...
+              </div>
             )}
             <div ref={bottomRef} />
           </div>
-          {error && <Alert variant="danger" className="mb-2">{error}</Alert>}
           <Form onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
             <div className="d-flex">
               <Form.Control

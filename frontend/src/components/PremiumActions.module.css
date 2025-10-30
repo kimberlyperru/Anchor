@@ -1,0 +1,28 @@
+.premiumForm {
+  max-width: 400px;
+  margin: 2rem auto;
+  background: #ffffff;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+}
+
+.formTitle {
+  font-weight: 600;
+  color: #343a40;
+}
+
+.submitButton {
+  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+
+/* Add a subtle hover effect */
+.submitButton:hover:not(:disabled) {
+  background-color: #198754;
+  border-color: #198754;
+}
+
+.spinner {
+  margin-right: 8px;
+}

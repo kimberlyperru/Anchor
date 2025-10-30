@@ -3,6 +3,7 @@ const router = express.Router();
 import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
 import jwt from 'jsonwebtoken';
+import { authMiddleware } from './auth.js';
 
 // list chats (rooms)
 router.get('/rooms', async (req, res) => {
@@ -30,10 +31,10 @@ router.get('/rooms', async (req, res) => {
 });
 
 // create room
-router.post('/rooms', async (req, res) => {
+router.post('/rooms', authMiddleware, async (req, res) => {
   const { title } = req.body;
   if (!title) return res.status(400).json({ message: 'Missing title' });
-  const c = new Chat({ title });
+  const c = new Chat({ title, authorId: req.user.id });
   await c.save();
   res.json(c);
 });

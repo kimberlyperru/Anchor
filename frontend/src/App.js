@@ -4,6 +4,8 @@ import Dashboard from './components/Dashboard';
 import ChatRoom from './components/ChatRoom';
 import AuthPage from './AuthPage';
 import AiConsultant from './components/AiConsultant';
+import Premium from './components/Premium';
+import PremiumRoute from './components/PremiumRoute';
 import { Container, Navbar, Button, Nav } from 'react-bootstrap';
 import logo from './logo.png';
 
@@ -33,6 +35,7 @@ function App() {
             Anchor
           </Navbar.Brand>
           <Nav className="ms-auto">
+            {token && <Button variant="outline-light" onClick={() => navigate(-1)} className="me-2">Back</Button>}
             {token && <Button variant="outline-light" onClick={handleLogout}>Log Out</Button>}
           </Nav>
         </Container>
@@ -44,7 +47,8 @@ function App() {
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/room/:id" element={<ChatRoom />} />
-            <Route path="/consultant" element={<AiConsultant />} />
+            <Route path="/consultant" element={<PremiumRoute><AiConsultant /></PremiumRoute>} />
+            <Route path="/premium" element={<Premium />} />
           </Routes>
         </Container>
       </main>

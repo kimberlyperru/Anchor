@@ -3,21 +3,17 @@ import API from '../utils/api';
 import { Card, Button, Row, Col, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import avatarImages from '../utils/avatars';
-import PremiumActions from './PremiumActions';
+import PremiumActions from './PremiumActions'; 
+import { useUser } from '../context/UserContext';
 import './Dashboard.css';
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
   const [title, setTitle] = useState('');
-  const [user, setUser] = useState(null);
+  const { user } = useUser(); // ✅ Get user from global context
 
   async function load() {
     try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const userRes = await API.get('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-        setUser(userRes.data);
-      }
       const roomsRes = await API.get('/chat/rooms');
       setRooms(roomsRes.data);
     } catch (error) {
@@ -30,7 +26,7 @@ export default function Dashboard() {
 
   async function createRoom() {
     if (!title) return;
-    await API.post('/chat/rooms', { title });
+    await API.post('/chat/rooms', { title }); // This call needs auth headers
     setTitle('');
     load();
   }
@@ -44,7 +40,7 @@ export default function Dashboard() {
           <Button onClick={createRoom}>Create</Button>
         </div>
         <div className="mt-3">
-          {user && user.isPremium
+          {user && user.isPremium && new Date(user.premiumUntil) > new Date()
             ? (
               <div className="d-flex align-items-center">
                 <div style={{ position: 'relative', marginRight: '1rem' }}>
@@ -65,6 +61,11 @@ export default function Dashboard() {
             )
             : <PremiumActions user={user} />
           }
+          {user && user.isAdmin && (
+            <div className="mt-3">
+              <Link to="/admin" className="btn btn-info">Admin Panel</Link>
+            </div>
+          )}
         </div>
       </Card>
 

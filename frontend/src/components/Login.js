@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import API from '../utils/api';
 import { Form, Button } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
+import { useUser } from '../context/UserContext'; // ✅ Import useUser
 
 export default function Login() {
   const [email,setEmail] = useState('');
@@ -9,15 +10,16 @@ export default function Login() {
   const [error,setError] = useState('');
   const [loading, setLoading] = useState(false);
   const nav = useNavigate();
+  const { login } = useUser(); // ✅ Get login function from context
 
   async function handleLogin(e) {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const r = await API.post('/auth/login', { email, password });
-      localStorage.setItem('token', r.data.token); // Note: in a real app, you might use httpOnly cookies
-      nav('/dashboard');
+      const res = await API.post('/auth/login', { email, password });
+      login(res.data.token, res.data.user); // ✅ Update global state
+      nav('/dashboard'); // ✅ Always navigate to dashboard after login
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
