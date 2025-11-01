@@ -60,12 +60,13 @@ router.post('/login', loginLimiter, async (req, res) => {
     if (user.isPremium && user.premiumUntil && new Date() > new Date(user.premiumUntil)) {
       user.isPremium = false;
       user.premiumUntil = null;
-      await user.save();
+      await user.save(); // The user object is now updated
     }
-
-    user = await User.findById(user._id); // Re-fetch user to get the latest state
-
+    
+    // No need to re-fetch; the 'user' object in memory is updated.
+    // Just use the potentially modified user object to create the token.
     const token = jwt.sign({ id: user._id, avatar: user.avatar, isPremium: user.isPremium, isAdmin: user.isAdmin }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    
     const userForFrontend = await User.findById(user._id).select('-passwordHash');
     res.json({ token, user: userForFrontend });
   } catch (err) {
@@ -103,6 +104,20 @@ router.get('/me', authMiddleware, async (req, res) => {
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ✅ Refresh JWT token
+router.post('/refresh-token', authMiddleware, async (req, res) => {
+  try {
+    // The authMiddleware has already verified the token and attached the payload to req.user
+    // We just need to sign a new token with the same payload but a new expiration
+    const userPayload = { id: req.user.id, avatar: req.user.avatar, isPremium: req.user.isPremium, isAdmin: req.user.isAdmin };
+    const newToken = jwt.sign(userPayload, process.env.JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token: newToken });
+  } catch (err) {
+    console.error('Token refresh error:', err);
+    res.status(500).json({ message: 'Server error during token refresh' });
   }
 });
 
