@@ -91,7 +91,7 @@ export default function ChatRoom() {
       <div className="d-flex justify-content-between align-items-center">
         <h4>Thread</h4>
         {user?.isPremium && (
-          <Link to="/consultant" className="btn btn-success">
+          <Link to="/main" className="btn btn-success">
             AI Consultant
           </Link>
         )}

@@ -91,18 +91,12 @@ router.post('/callback', async (req, res) => {
         throw new Error(`User with ID ${payment.userId} not found for activation.`);
       }
 
-      // C. Determine if it was a premium or standard signup payment
-      const updates = { isActive: true };
-      // This logic assumes the user's premium status was set before payment.
-      // You might want to check the payment amount against a premium price instead.
-      if (user.isPremium) {
-        const premiumExpiry = new Date();
-        premiumExpiry.setDate(premiumExpiry.getDate() + 30); // Set premium for 30 days
-        updates.premiumUntil = premiumExpiry;
-        console.log(`Activating premium for user ${user.email} until ${premiumExpiry.toISOString()}`);
-      } else {
-        console.log(`Activating standard user ${user.email}`);
-      }
+      // C. Grant premium access
+      const updates = { isActive: true, isPremium: true };
+      const premiumExpiry = new Date();
+      premiumExpiry.setDate(premiumExpiry.getDate() + 30); // Set premium for 30 days
+      updates.premiumUntil = premiumExpiry;
+      console.log(`Activating premium for user ${user.email} until ${premiumExpiry.toISOString()}`);
 
       // D. Update the user in the database
       await User.findByIdAndUpdate(payment.userId, { $set: updates });

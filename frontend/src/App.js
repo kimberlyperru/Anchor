@@ -1,13 +1,12 @@
 import React from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-import ChatRoom from './components/ChatRoom';
-import AuthPage from './AuthPage';
-import AiConsultant from './components/AiConsultant';
-import Premium from './components/Premium';
-import PremiumRoute from './components/PremiumRoute';
-import { Container, Navbar, Button, Nav } from 'react-bootstrap';
+import MainContent from './components/MainContent';
+import Navbar from 'react-bootstrap/Navbar';
+import { Container, Button, Nav } from 'react-bootstrap';
 import logo from './logo.png';
+import AuthPage from './AuthPage';
+import Premium from './components/Premium';
 
 function App() {
   const navigate = useNavigate();
@@ -46,8 +45,7 @@ function App() {
             <Route path="/" element={<Navigate to="/auth" replace />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/room/:id" element={<ChatRoom />} />
-            <Route path="/consultant" element={<PremiumRoute><AiConsultant /></PremiumRoute>} />
+            <Route path="/main/:id?" element={<MainContent />} />
             <Route path="/premium" element={<Premium />} />
           </Routes>
         </Container>

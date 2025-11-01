@@ -56,10 +56,17 @@ export default function Dashboard() {
                     }}
                   >👑</Badge>
                 </div>
-                <span>Welcome Premium User!</span> <Link to="/consultant" className="btn btn-success ms-3">Access AI Consultant</Link>
+                <span>Welcome Premium User!</span> <Link to="/main" className="btn btn-success ms-3">Access AI Consultant</Link>
               </div>
             )
-            : <PremiumActions user={user} />
+            : (
+              <div className="d-flex align-items-center">
+                <div style={{ position: 'relative', marginRight: '1rem' }}>
+                  <img src={avatarImages[user.avatar]} alt="avatar" style={{ width: 50, height: 50, borderRadius: '50%' }} />
+                </div>
+                <span>Welcome Free User!</span>
+              </div>
+            )
           }
           {user && user.isAdmin && (
             <div className="mt-3">
@@ -78,7 +85,7 @@ export default function Dashboard() {
                 {r.messageCount || 0} messages · Created {new Date(r.createdAt).toLocaleDateString()}
               </div>
               <div className="d-flex justify-content-between mt-2">
-                <Link to={`/room/${r._id}`} className="btn btn-primary">Open</Link>
+                <Link to={`/main`} className="btn btn-primary">Open</Link>
               </div>
             </Card>
           </Col>

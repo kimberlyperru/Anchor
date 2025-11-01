@@ -40,7 +40,7 @@ export const UserProvider = ({ children }) => {
 
   // ✅ Memoize the context value to prevent unnecessary re-renders of consumers
   const value = useMemo(() => (
-    { user, setUser, login, logout, loading, refetchUser: fetchUser }
+    { user, setUser, login, logout, loading, refreshUser: fetchUser }
   ), [user, loading, login, logout, fetchUser]);
 
   return (

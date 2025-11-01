@@ -102,7 +102,7 @@ export default function PremiumActions({ user }) {
       setIsPolling(false);
       setMessage("⏳ Payment confirmation timed out. If you paid, please refresh the page. Otherwise, please try again.");
       setAlertVariant("warning");
-    }, 60000); // 60-second timeout
+    }, 120000); // 120-second timeout
 
     // Cleanup function to clear interval and timeout on unmount
     return () => {
