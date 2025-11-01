@@ -2,27 +2,28 @@ import React, { useState, useEffect } from "react";
 import API from "../utils/api";
 import { Button, Form, Alert, Spinner, Fade } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "../context/UserContext";
-import { useSocket } from "../context/SocketContext"; // ✅ 1. Import useSocket
-import styles from "./PremiumActions.module.css";
+import { useUser } from "../context/UserContext"; // ✅ Import useUser
+import styles from "./PremiumActions.module.css"; // ✅ Import CSS Module (create this file if needed)
  
 export default function PremiumActions({ user }) {
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
   const [alertVariant, setAlertVariant] = useState("info");
-  const [loading, setLoading] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
   const navigate = useNavigate();
-  const { refreshUser } = useUser();
-  const socket = useSocket(); // ✅ 2. Get the socket instance
+  const { refreshUser } = useUser(); // ✅ Get refresh function
  
   async function handleMpesaPayment(e) {
     e.preventDefault();
-    setMessage("");
+    setMessage(null); // Clear previous messages
+    setAlertVariant("info");
     setLoading(true);
+    setIsPolling(false); // Reset polling state
 
     try {
       const token = localStorage.getItem("token");
-      if (!token || !user) {
+      if (!token) {
         setMessage("⚠️ Please log in to make a payment.");
         setAlertVariant("warning");
         setLoading(false);
@@ -40,7 +41,7 @@ export default function PremiumActions({ user }) {
         headers: { Authorization: `Bearer ${token}` },
       };
 
-      // Initiate STK Push. The backend will handle the callback and emit a socket event.
+      // ✅ Call backend to initiate STK Push
       await API.post(
         "/mpesa/stkpush",
         {
@@ -52,9 +53,9 @@ export default function PremiumActions({ user }) {
         config
       );
 
-      setMessage("✅ Request sent. Check your phone to complete the payment. We'll redirect you automatically upon confirmation.");
+      setMessage("✅ Request sent. Check your phone to complete payment and wait for confirmation.");
       setAlertVariant("success");
-      // The 'loading' state remains true while we wait for the socket event.
+      setIsPolling(true); // Start polling
 
     } catch (error) {
       console.error("❌ M-Pesa initiation failed:", error);
@@ -65,29 +66,44 @@ export default function PremiumActions({ user }) {
     }
   }
 
-  // ✅ 3. Listen for the 'paymentSuccess' event from the server
+  // ✅ Use useEffect for polling to handle component lifecycle
   useEffect(() => {
-    if (!socket) return;
+    if (!isPolling) return;
 
-    const handlePaymentSuccess = async (data) => {
-      console.log("✅ Payment success event received via WebSocket:", data);
-      setMessage("✅ Upgrade successful! You now have premium features. Redirecting...");
-      setAlertVariant("success");
-      
-      await refreshUser(); // Refresh the user context
-      
-      // Redirect after a short delay to allow the user to read the message.
-      setTimeout(() => {
-        navigate('/consultant');
-      }, 2000);
-    };
+    let timeout;
 
-    socket.on('paymentSuccess', handlePaymentSuccess);
+    const pollInterval = setInterval(async () => {
+      try {
+        // ✅ Poll an endpoint that checks payment status for the user
+        const { data: updatedUser } = await API.get(`/auth/me`);
+        if (updatedUser.isPremium) {
+          clearInterval(pollInterval);
+          clearTimeout(timeout);
+          setMessage("✅ Upgrade successful! You now have premium features. Redirecting...");
+          setAlertVariant("success");
+          await refreshUser(); // ✅ Refresh the user context
+          setTimeout(() => navigate('/consultant'), 1500); // Redirect after a short delay
+        }
+      } catch (err) {
+        console.error("Polling for premium status failed:", err);
+        // Don't stop polling on a single failed check, but handle timeout
+      }
+    }, 3000); // Poll every 3 seconds
 
+    timeout = setTimeout(() => {
+      clearInterval(pollInterval);
+      setLoading(false);
+      setIsPolling(false);
+      setMessage("⏳ Payment confirmation timed out. If you paid, please refresh the page. Otherwise, please try again.");
+      setAlertVariant("warning");
+    }, 120000); // 120-second (2 minute) timeout
+
+    // Cleanup function to clear interval and timeout on unmount
     return () => {
-      socket.off('paymentSuccess', handlePaymentSuccess);
+      clearInterval(pollInterval);
+      clearTimeout(timeout);
     };
-  }, [socket, navigate, refreshUser]);
+  }, [isPolling, navigate, refreshUser]);
 
   return (
     <Form onSubmit={handleMpesaPayment} className={styles.premiumForm}>

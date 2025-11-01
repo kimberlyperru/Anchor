@@ -12,11 +12,9 @@ export default function PaymentSuccess() {
   useEffect(() => {
     const query = new URLSearchParams(location.search);
     const paymentId = query.get('paymentId');
-    const PayerID = query.get('PayerID');
     const userId = query.get('userId');
-    const purpose = query.get('purpose');
 
-    if (!paymentId || !PayerID || !userId || !purpose) {
+    if (!paymentId || !userId) {
       setError('Invalid payment confirmation URL. Please try again.');
       setStatus('error');
       return;
@@ -26,13 +24,10 @@ export default function PaymentSuccess() {
       try {
         const res = await API.post('/payments/paypal/capture-order', {
           paymentId,
-          PayerID,
           userId,
-          purpose,
         });
         localStorage.setItem('token', res.data.token);
         setStatus('success');
-        navigate('/dashboard');
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to capture payment. Please contact support.');
         setStatus('error');
@@ -40,7 +35,13 @@ export default function PaymentSuccess() {
     }
 
     capturePayment();
-  }, [location, navigate]);
+  }, [location]);
+
+  useEffect(() => {
+    if (status === 'success') {
+      setTimeout(() => navigate('/dashboard'), 3000);
+    }
+  }, [status, navigate]);
 
   return (
     <Container className="text-center mt-5">
@@ -51,7 +52,12 @@ export default function PaymentSuccess() {
         </div>
       )}
       {status === 'error' && <Alert variant="danger">{error}</Alert>}
-      {status === 'success' && <Alert variant="success">Payment successful! Redirecting...</Alert>}
+      {status === 'success' && (
+        <Alert variant="success">
+          <h2>Payment successful!</h2>
+          <p>You will be redirected to the dashboard automatically.</p>
+        </Alert>
+      )}
     </Container>
   );
 }
